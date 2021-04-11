@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 const (
@@ -27,11 +28,23 @@ func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Split(createSplitter(separators))
 
-	if indexWithoutFirst := indexOf(args[1:], replacer); indexWithoutFirst > -1 {
-		replaceIterator(args, scanner, indexWithoutFirst+1)
-	} else {
+	argIndexesToReplace := findIndexesInArr(args, replacer)
+
+	if len(argIndexesToReplace) == 0 {
 		stdinIterator(args, scanner)
+	} else {
+		replaceIterator(args, scanner, argIndexesToReplace)
 	}
+
+}
+
+func findIndexesInArr(arr []string, strToMatch string) (r []int) {
+	for i, s := range arr {
+		if strings.Contains(s, strToMatch) {
+			r = append(r, i)
+		}
+	}
+	return
 }
 
 func stdinIterator(args []string, scanner *bufio.Scanner) {
@@ -42,6 +55,10 @@ func stdinIterator(args []string, scanner *bufio.Scanner) {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmdStdin, _ := cmd.StdinPipe()
+
+		// simply call command once per line
+		// e.g. printf does its own substitution
+		// relies on data coming from stdin
 		cmdStdin.Write([]byte(l))
 		cmdStdin.Close()
 
@@ -49,12 +66,17 @@ func stdinIterator(args []string, scanner *bufio.Scanner) {
 	}
 }
 
-func replaceIterator(args []string, scanner *bufio.Scanner, index int) {
+func replaceIterator(args []string, scanner *bufio.Scanner, indexesToReplace []int) {
 	for scanner.Scan() {
-		l := scanner.Text()
-		replacedArgs := args
-		replacedArgs[index] = l
-		cmd := exec.Command(args[0], args[1:]...)
+		inputLine := scanner.Text()
+		replacedArgs := make([]string, len(args))
+		copy(replacedArgs, args)
+		for _, indexToReplace := range indexesToReplace {
+			argWithReplacer := replacedArgs[indexToReplace]
+			argReplaced := strings.Replace(argWithReplacer, replacer, inputLine, -1)
+			replacedArgs[indexToReplace] = argReplaced
+		}
+		cmd := exec.Command(replacedArgs[0], replacedArgs[1:]...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Run()
